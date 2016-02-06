@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Devices.Enumeration;
 using Windows.Devices.HumanInterfaceDevice;
@@ -13,6 +14,7 @@ namespace ThingM
 {
     public sealed class Blink1 : IDisposable
     {
+        private static EventWaitHandle _devicesWaitHandle = new ManualResetEvent(false);
         private static readonly DeviceWatcher _watcher;
         private static readonly IDictionary<string, Blink1> _devices = new Dictionary<string, Blink1>();
 
@@ -27,7 +29,14 @@ namespace ThingM
             _watcher.Added += HandleDeviceAdded;
             _watcher.Updated += HandleDeviceUpdated;
             _watcher.Removed += HandleDeviceRemoved;
+            _watcher.EnumerationCompleted += HandleEnumerationCompleted;
             _watcher.Start();
+        }
+
+        private static void HandleEnumerationCompleted(DeviceWatcher sender, object args)
+        {
+            _devicesWaitHandle.Set();
+            sender.EnumerationCompleted -= HandleEnumerationCompleted;
         }
 
         private Blink1(DeviceInformation deviceInformation)
@@ -41,7 +50,14 @@ namespace ThingM
         public static event EventHandler<Blink1> DeviceRemoved;
 
         public static IEnumerable<Blink1> Devices
-            => _devices.Values;
+        {
+            get
+            {
+                _devicesWaitHandle.WaitOne();
+
+                return _devices.Values;
+            }
+        }
 
         public async Task<uint> SetColorAsync(Color color)
         {
